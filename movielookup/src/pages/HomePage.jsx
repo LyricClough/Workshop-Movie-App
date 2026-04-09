@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Container, Row, Col, Form, Button, Card, Spinner, Alert } from 'react-bootstrap';
 import NavBar from '../components/NavBar.jsx';
 import MovieCard from '../components/MovieCard.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import { fetchMovieGenres, searchMovies } from '../api/tmdb.js';
+import {
+  addFavoriteMovie,
+  addSavedMovie,
+  removeFavoriteMovie,
+  removeSavedMovie,
+  subscribeFavoriteMovieIds,
+  subscribeSavedMovieIds,
+} from '../firebase/movieLists.js';
 
 const YEAR_OPTIONS = ['2025', '2024', '2023', '2022'];
 
@@ -18,6 +28,8 @@ function formatRating(voteAverage) {
 }
 
 function HomePage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [query, setQuery] = useState('');
   const [year, setYear] = useState('');
   const [genreId, setGenreId] = useState('');
@@ -26,6 +38,22 @@ function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [genreMap, setGenreMap] = useState(() => new Map());
+  const [savedIds, setSavedIds] = useState(() => new Set());
+  const [favoriteIds, setFavoriteIds] = useState(() => new Set());
+
+  useEffect(() => {
+    if (!user) {
+      setSavedIds(new Set());
+      setFavoriteIds(new Set());
+      return undefined;
+    }
+    const unsubSaved = subscribeSavedMovieIds(user.uid, setSavedIds);
+    const unsubFav = subscribeFavoriteMovieIds(user.uid, setFavoriteIds);
+    return () => {
+      unsubSaved();
+      unsubFav();
+    };
+  }, [user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +109,34 @@ function HomePage() {
       setResults([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleSaved = async (movie) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    const id = String(movie.id);
+    try {
+      if (savedIds.has(id)) await removeSavedMovie(user.uid, id);
+      else await addSavedMovie(user.uid, movie);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update saved movies.');
+    }
+  };
+
+  const handleToggleFavorite = async (movie) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    const id = String(movie.id);
+    try {
+      if (favoriteIds.has(id)) await removeFavoriteMovie(user.uid, id);
+      else await addFavoriteMovie(user.uid, movie);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update favorites.');
     }
   };
 
@@ -180,11 +236,14 @@ function HomePage() {
             filteredResults.map((movie) => (
               <MovieCard
                 key={movie.id}
-                title={movie.title || movie.original_title || 'Untitled'}
+                movie={movie}
                 year={formatYear(movie.release_date)}
                 rating={formatRating(movie.vote_average)}
                 genres={genreNamesForMovie(movie.genre_ids)}
-                posterPath={movie.poster_path}
+                isSaved={savedIds.has(String(movie.id))}
+                isFavorite={favoriteIds.has(String(movie.id))}
+                onToggleSaved={handleToggleSaved}
+                onToggleFavorite={handleToggleFavorite}
               />
             ))
           )}

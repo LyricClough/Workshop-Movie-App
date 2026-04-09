@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 function requireEnv(name) {
   const v = import.meta.env[name];
@@ -26,6 +27,7 @@ if (measurementId) {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+export const db = getFirestore(app);
 
 export let analytics = null;
 if (typeof window !== 'undefined') {

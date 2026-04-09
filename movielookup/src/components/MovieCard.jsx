@@ -1,8 +1,47 @@
-import { Card, Button, Row, Col } from 'react-bootstrap';
+import { useState } from 'react';
+import { Card, Button, Row, Col, Spinner } from 'react-bootstrap';
 import { getPosterUrl } from '../api/tmdb.js';
 
-function MovieCard({ title, year, rating, genres, posterPath }) {
-  const posterSrc = getPosterUrl(posterPath, 'w185');
+function MovieCard({
+  movie,
+  year,
+  rating,
+  genres,
+  libraryMode = false,
+  listLabel = 'list',
+  onRemoveFromList,
+  isSaved = false,
+  isFavorite = false,
+  onToggleSaved,
+  onToggleFavorite,
+}) {
+  const [busy, setBusy] = useState(null);
+
+  const title = movie.title || movie.original_title || 'Untitled';
+  const posterSrc = getPosterUrl(movie.poster_path, 'w185');
+
+  const handleSave = async () => {
+    if (!onToggleSaved) return;
+    setBusy('save');
+    try {
+      await onToggleSaved(movie);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleFavorite = async () => {
+    if (!onToggleFavorite) return;
+    setBusy('favorite');
+    try {
+      await onToggleFavorite(movie);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveBusy = busy === 'save';
+  const favBusy = busy === 'favorite';
 
   return (
     <Card className="shadow-sm border-0 mb-3">
@@ -37,8 +76,46 @@ function MovieCard({ title, year, rating, genres, posterPath }) {
           </Col>
 
           <Col xs={12} md={3} className="mt-3 mt-md-0 d-grid gap-2">
-            <Button variant="outline-dark">View</Button>
-            <Button variant="outline-danger">❤ Favorite</Button>
+            {libraryMode ? (
+              <Button variant="outline-danger" onClick={() => onRemoveFromList?.()}>
+                Remove from {listLabel}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant={isSaved ? 'primary' : 'outline-primary'}
+                  onClick={handleSave}
+                  disabled={saveBusy || favBusy}
+                >
+                  {saveBusy ? (
+                    <>
+                      <Spinner animation="border" size="sm" className="me-2" />
+                      Save
+                    </>
+                  ) : isSaved ? (
+                    'Saved'
+                  ) : (
+                    'Save'
+                  )}
+                </Button>
+                <Button
+                  variant={isFavorite ? 'danger' : 'outline-danger'}
+                  onClick={handleFavorite}
+                  disabled={saveBusy || favBusy}
+                >
+                  {favBusy ? (
+                    <>
+                      <Spinner animation="border" size="sm" className="me-2" />
+                      Favorite
+                    </>
+                  ) : isFavorite ? (
+                    '❤ Favorited'
+                  ) : (
+                    '❤ Favorite'
+                  )}
+                </Button>
+              </>
+            )}
           </Col>
         </Row>
       </Card.Body>
