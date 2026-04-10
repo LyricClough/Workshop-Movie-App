@@ -54,14 +54,14 @@ function MovieCard({
                 alt={title}
                 className="rounded w-100"
                 style={{
-                  height: '140px',
+                  height: '320px',
                   objectFit: 'cover',
                 }}
               />
             ) : (
               <div
                 className="bg-secondary-subtle rounded d-flex align-items-center justify-content-center"
-                style={{ height: '140px' }}
+                style={{ height: '320px' }}
               >
                 No poster
               </div>
