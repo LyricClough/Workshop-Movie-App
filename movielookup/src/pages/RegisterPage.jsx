@@ -45,7 +45,7 @@ function RegisterPage() {
       await createUserProfile(user.uid, { username: name, email: email.trim() });
       navigate('/');
     } catch (err) {
-      setError(authErrorMessage(err?.code));
+      setError(authErrorMessage(err));
     } finally {
       setLoading(false);
     }

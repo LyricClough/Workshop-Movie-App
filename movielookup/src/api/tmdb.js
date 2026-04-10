@@ -2,12 +2,26 @@ const TMDB_BASE = 'https://api.themoviedb.org/3';
 
 function getApiKey() {
   const key = import.meta.env.VITE_TMDB_API_KEY;
-  if (!key) {
+  if (key == null || !String(key).trim()) {
     throw new Error(
       'Missing VITE_TMDB_API_KEY. Add it to a .env file in the project root.',
     );
   }
-  return key;
+  return String(key).trim();
+}
+
+async function parseJsonBody(res) {
+  const text = await res.text();
+  if (!text.trim()) {
+    throw new Error(
+      'TMDB returned an empty response. Check network and restart the dev server after editing .env.',
+    );
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error('TMDB returned invalid JSON. Try again in a moment.');
+  }
 }
 
 export function getPosterUrl(posterPath, size = 'w185') {
@@ -23,7 +37,7 @@ export async function fetchMovieGenres() {
   if (!res.ok) {
     throw new Error(`Genres request failed (${res.status})`);
   }
-  const data = await res.json();
+  const data = await parseJsonBody(res);
   return data.genres ?? [];
 }
 
@@ -41,5 +55,5 @@ export async function searchMovies({ query, page = 1, primaryReleaseYear }) {
   if (!res.ok) {
     throw new Error(`Search failed (${res.status})`);
   }
-  return res.json();
+  return parseJsonBody(res);
 }
