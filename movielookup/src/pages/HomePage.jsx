@@ -1,8 +1,145 @@
-import { Container, Row, Col, Form, Button, Card } from 'react-bootstrap';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Container, Row, Col, Form, Button, Card, Spinner, Alert } from 'react-bootstrap';
 import NavBar from '../components/NavBar.jsx';
 import MovieCard from '../components/MovieCard.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
+import { fetchMovieGenres, searchMovies } from '../api/tmdb.js';
+import {
+  addFavoriteMovie,
+  addSavedMovie,
+  removeFavoriteMovie,
+  removeSavedMovie,
+  subscribeFavoriteMovieIds,
+  subscribeSavedMovieIds,
+} from '../firebase/movieLists.js';
+
+const YEAR_OPTIONS = ['2025', '2024', '2023', '2022'];
+
+function formatYear(releaseDate) {
+  if (!releaseDate) return '—';
+  const y = releaseDate.slice(0, 4);
+  return y || '—';
+}
+
+function formatRating(voteAverage) {
+  if (voteAverage == null || Number.isNaN(voteAverage)) return '—';
+  return Number(voteAverage).toFixed(1);
+}
 
 function HomePage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [query, setQuery] = useState('');
+  const [year, setYear] = useState('');
+  const [genreId, setGenreId] = useState('');
+  const [genres, setGenres] = useState([]);
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [genreMap, setGenreMap] = useState(() => new Map());
+  const [savedIds, setSavedIds] = useState(() => new Set());
+  const [favoriteIds, setFavoriteIds] = useState(() => new Set());
+
+  useEffect(() => {
+    if (!user) {
+      setSavedIds(new Set());
+      setFavoriteIds(new Set());
+      return undefined;
+    }
+    const unsubSaved = subscribeSavedMovieIds(user.uid, setSavedIds);
+    const unsubFav = subscribeFavoriteMovieIds(user.uid, setFavoriteIds);
+    return () => {
+      unsubSaved();
+      unsubFav();
+    };
+  }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await fetchMovieGenres();
+        if (cancelled) return;
+        setGenres(list);
+        setGenreMap(new Map(list.map((g) => [g.id, g.name])));
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Could not load genres.');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const genreNamesForMovie = (genreIds) => {
+    if (!genreIds?.length) return '—';
+    const names = genreIds
+      .map((id) => genreMap.get(id))
+      .filter(Boolean);
+    return names.length ? names.join(', ') : '—';
+  };
+
+  const filteredResults = useMemo(() => {
+    if (!genreId) return results;
+    const id = Number(genreId);
+    return results.filter((m) => m.genre_ids?.includes(id));
+  }, [results, genreId]);
+
+  const runSearch = async (e) => {
+    e.preventDefault();
+    const q = query.trim();
+    if (!q) {
+      setError('Please enter a movie title to search.');
+      setResults([]);
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      const data = await searchMovies({
+        query: q,
+        primaryReleaseYear: year || undefined,
+      });
+      setResults(data.results ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed.');
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleSaved = async (movie) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    const id = String(movie.id);
+    try {
+      if (savedIds.has(id)) await removeSavedMovie(user.uid, id);
+      else await addSavedMovie(user.uid, movie);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update saved movies.');
+    }
+  };
+
+  const handleToggleFavorite = async (movie) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    const id = String(movie.id);
+    try {
+      if (favoriteIds.has(id)) await removeFavoriteMovie(user.uid, id);
+      else await addFavoriteMovie(user.uid, movie);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update favorites.');
+    }
+  };
+
   return (
     <>
       <NavBar />
@@ -19,7 +156,7 @@ function HomePage() {
 
         <Card className="border-0 shadow-sm mb-5" style={{ backgroundColor: '#eef6f7' }}>
           <Card.Body className="p-4">
-            <Form>
+            <Form onSubmit={runSearch}>
               <Form.Label className="fw-semibold">Search for movies</Form.Label>
 
               <Row className="g-2 mb-3">
@@ -27,34 +164,52 @@ function HomePage() {
                   <Form.Control
                     type="text"
                     placeholder="Type a movie title..."
+                    value={query}
+                    onChange={(ev) => setQuery(ev.target.value)}
                   />
                 </Col>
                 <Col md={3}>
-                  <Button variant="primary" className="w-100">
-                    Search
+                  <Button variant="primary" className="w-100" type="submit" disabled={loading}>
+                    {loading ? (
+                      <>
+                        <Spinner animation="border" size="sm" className="me-2" />
+                        Search
+                      </>
+                    ) : (
+                      'Search'
+                    )}
                   </Button>
                 </Col>
               </Row>
 
               <Row className="g-2">
                 <Col md={3}>
-                  <Form.Select>
-                    <option>Year</option>
-                    <option>2025</option>
-                    <option>2024</option>
-                    <option>2023</option>
-                    <option>2022</option>
+                  <Form.Select
+                    value={year}
+                    onChange={(ev) => setYear(ev.target.value)}
+                    aria-label="Filter by year"
+                  >
+                    <option value="">Year</option>
+                    {YEAR_OPTIONS.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
                   </Form.Select>
                 </Col>
 
                 <Col md={3}>
-                  <Form.Select>
-                    <option>Genre</option>
-                    <option>Action</option>
-                    <option>Drama</option>
-                    <option>Comedy</option>
-                    <option>Romance</option>
-                    <option>Sci-Fi</option>
+                  <Form.Select
+                    value={genreId}
+                    onChange={(ev) => setGenreId(ev.target.value)}
+                    aria-label="Filter by genre"
+                  >
+                    <option value="">Genre</option>
+                    {genres.map((g) => (
+                      <option key={g.id} value={String(g.id)}>
+                        {g.name}
+                      </option>
+                    ))}
                   </Form.Select>
                 </Col>
               </Row>
@@ -62,27 +217,40 @@ function HomePage() {
           </Card.Body>
         </Card>
 
-        <section>
-          <h2 className="fw-bold mb-4">Popular Results</h2>
+        {error && (
+          <Alert variant="danger" className="mb-4">
+            {error}
+          </Alert>
+        )}
 
-          <MovieCard
-            title="Forrest Gump"
-            year="1994"
-            rating="8.8"
-            genres="Drama, Romance"
-          />
-          <MovieCard
-            title="Inception"
-            year="2010"
-            rating="8.8"
-            genres="Action, Sci-Fi"
-          />
-          <MovieCard
-            title="Pulp Fiction"
-            year="1994"
-            rating="8.9"
-            genres="Crime, Drama"
-          />
+        <section>
+          <h2 className="fw-bold mb-4">Results</h2>
+
+          {loading && !filteredResults.length ? (
+            <p className="text-muted">Searching…</p>
+          ) : filteredResults.length === 0 && !loading ? (
+            <p className="text-muted">
+              Enter a title and click Search to see movies from TMDB.
+            </p>
+          ) : (
+            filteredResults.map((movie) => (
+              <MovieCard
+                key={movie.id}
+                movie={movie}
+                year={formatYear(movie.release_date)}
+                rating={formatRating(movie.vote_average)}
+                genres={genreNamesForMovie(movie.genre_ids)}
+                isSaved={savedIds.has(String(movie.id))}
+                isFavorite={favoriteIds.has(String(movie.id))}
+                onToggleSaved={handleToggleSaved}
+                onToggleFavorite={handleToggleFavorite}
+              />
+            ))
+          )}
+
+          {genreId && results.length > 0 && filteredResults.length === 0 && !loading && (
+            <p className="text-muted">No matches for the selected genre in this search.</p>
+          )}
         </section>
       </Container>
     </>
