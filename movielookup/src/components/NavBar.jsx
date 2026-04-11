@@ -29,7 +29,7 @@ function NavBar() {
             </Nav.Link>
             {!loading && user ? (
               <>
-                <span className="text-muted small d-none d-lg-inline">{user.email}</span>
+                <span className="text-muted small d-none d-lg-inline">{user.displayName}</span>
                 <Button
                   variant="outline-secondary"
                   size="sm"
