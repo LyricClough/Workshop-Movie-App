@@ -6,6 +6,7 @@ import NavBar from '../components/NavBar.jsx';
 import { auth } from '../firebase/config.js';
 import { authErrorMessage } from '../firebase/authErrors.js';
 import { createUserProfile } from '../firebase/userProfile.js';
+import { validateRegistration } from '../utils/authValidation.js';
 
 function RegisterPage() {
   const navigate = useNavigate();
@@ -20,17 +21,17 @@ function RegisterPage() {
     e.preventDefault();
     setError(null);
 
-    const name = username.trim();
-    if (!name) {
-      setError('Please enter a username.');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
-    if (password.length < 6) {
-      setError('Password should be at least 6 characters.');
+    let cleanUsername;
+
+    try {
+      const validated = validateRegistration({
+        username,
+        password,
+        confirmPassword,
+      });
+      cleanUsername = validated.username;
+    } catch (err) {
+      setError(err.message);
       return;
     }
 
@@ -41,8 +42,8 @@ function RegisterPage() {
         email.trim(),
         password,
       );
-      await updateProfile(user, { displayName: name });
-      await createUserProfile(user.uid, { username: name, email: email.trim() });
+      await updateProfile(user, { displayName: cleanUsername });
+      await createUserProfile(user.uid, { username: cleanUsername, email: email.trim() });
       navigate('/');
     } catch (err) {
       setError(authErrorMessage(err));
@@ -73,12 +74,15 @@ function RegisterPage() {
                   <Form.Group className="mb-3" controlId="registerUsername">
                     <Form.Label>Username</Form.Label>
                     <Form.Control
-                      type="text"
-                      placeholder="Choose a username"
-                      value={username}
-                      onChange={(ev) => setUsername(ev.target.value)}
-                      autoComplete="username"
-                      required
+                        type="text"
+                        placeholder="Choose a username"
+                        value={username}
+                        onChange={(ev) => setUsername(ev.target.value)}
+                        autoComplete="username"
+                        required
+                        minLength={5}
+                        maxLength={14}
+                        pattern="[A-Za-z0-9_]{5,14}"
                     />
                   </Form.Group>
 
@@ -97,26 +101,26 @@ function RegisterPage() {
                   <Form.Group className="mb-3" controlId="registerPassword">
                     <Form.Label>Password</Form.Label>
                     <Form.Control
-                      type="password"
-                      placeholder="Create a password"
-                      value={password}
-                      onChange={(ev) => setPassword(ev.target.value)}
-                      autoComplete="new-password"
-                      required
-                      minLength={6}
+                        type="password"
+                        placeholder="Create a password"
+                        value={password}
+                        onChange={(ev) => setPassword(ev.target.value)}
+                        autoComplete="new-password"
+                        required
+                        minLength={8}
                     />
                   </Form.Group>
 
                   <Form.Group className="mb-3" controlId="registerConfirmPassword">
                     <Form.Label>Confirm Password</Form.Label>
                     <Form.Control
-                      type="password"
-                      placeholder="Re-enter your password"
-                      value={confirmPassword}
-                      onChange={(ev) => setConfirmPassword(ev.target.value)}
-                      autoComplete="new-password"
-                      required
-                      minLength={6}
+                        type="password"
+                        placeholder="Re-enter your password"
+                        value={confirmPassword}
+                        onChange={(ev) => setConfirmPassword(ev.target.value)}
+                        autoComplete="new-password"
+                        required
+                        minLength={8}
                     />
                   </Form.Group>
 
